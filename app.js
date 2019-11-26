@@ -1,18 +1,13 @@
 const express = require('express')
 const cookieParser = require('cookie-parser')
+const sqlite = require('sqlite')
+
 
 const port = 3008
 
 // 创建一个静态库，现实中应该是一个数据库
-const users = [{
-  name: 'a',
-  email: 'a@qq.com',
-  password: 'a'
-}, {
-  name: 'b',
-  email: 'b@qq.com',
-  password: 'b'
-}]
+const dbPromise = sqlite.open(__dirname + '/db/voting-site.sqlite3')
+let db
 
 // 更改密码时，令牌和更改密码的用户之间的映射
 const changePasswordTokenMap = {}
@@ -70,11 +65,14 @@ app.get('/', (req, res, next) => {
     }
   })
 
-app.post('/login', (req, res, next) => {
+app.post('/login', async (req, res, next) => {
   var tryLogUser = req.body
   // 由于HTTP是无状态相应，创建cookie目的是便于再次登陆时直接登陆
   // 为登陆的用户创建cookie
-  if (users.find(it => it.name === tryLogUser.name && it.password === tryLogUser.password)) {
+  var loginSec = await db.get(
+    'SELECT * FROM users WHERE name = "'+ tryLogUser.name +'" AND password = "'+ tryLogUser.password +'" '
+    )
+  if (loginSec) {
     res.cookie('user', tryLogUser.name, {
       signed: true
     })
@@ -115,16 +113,19 @@ app.route('/register')
       </form>
     `)
   })
-  .post((req, res, next) => {
-    var tryUserInfo = req.body
-    if (users.find(it => it.name === tryUserInfo.name)) {
+  .post(async (req, res, next) => {
+    var regInfo = req.body
+    var userName = await db.get('SELECT * FROM users WHERE name = "' + regInfo.name + '"')
+    var userEmail = await db.get('SELECT * FROM users WHERE email = "' + regInfo.email + '"')
+    if (userName) {
       res.end('用户名已被注册')
-    } if (users.find(it => it.email === tryUserInfo.email)) {
+    } if (userEmail) {
       res.end('邮箱已被注册')
     } else {
-      users.push(tryUserInfo)
+      // 下面等价上面一行，为上面一行的简写
+      // db.run('INSERT INTO user (name, email, password) VALUES ('+regInfo.name+','+regInfo.email+','+regInfo.password+')')
+      await db.run('INSERT INTO users (name, email, password) VALUES (?,?,?)',regInfo.name,regInfo.email,regInfo.password)
       res.end('注册成功')
-      console.log(users)
     }
   })
 
@@ -137,7 +138,7 @@ app.route('/forget')
       </form>
     `)
   })
-  .post((req, res, next) => {
+  .post(async (req, res, next) => {
 
     // 忘记密码的邮箱先与令牌（token）建立映射关系
     // token 是一个随机数，20分钟无操作需清除
@@ -148,8 +149,7 @@ app.route('/forget')
     setTimeout(() => {
       delete changePasswordTokenMap[token]
     },60 * 1000 * 20)
-
-    if (users.find(it => it.email === email)) {
+    if (await db.get('SELECT * FROM users WHERE email = ?',email)) {
       var link = `http://localhost:3008/changePassword/${token}`
       
       // 这里实际上是要向目标邮箱发送一个邮件的
@@ -163,9 +163,14 @@ app.route('/forget')
   })
 
 app.route('/changePassword/:token')
-  .get((req, res, next) => {
+  .get(async (req, res, next) => {
     var token = req.params.token
-    var user = users.find(it => it.email === changePasswordTokenMap[token])
+    var email = changePasswordTokenMap[token]
+    if (! email) {
+      res.end('链接已失效')
+      return
+    }
+    var user = await db.get('SELECT * FROM users WHERE email=?', changePasswordTokenMap[token])
     res.end(`
       <form method="post" action="">
         <h3>正在重置${user.name}用户密码</h3><br>
@@ -173,21 +178,24 @@ app.route('/changePassword/:token')
         <button>确定</button>
       </form>
     `)
-  })
-  .post((req, res, next) => {
+  }) 
+  .post(async (req, res, next) => {
     var token = req.params.token
-    var user = users.find(it => it.email === changePasswordTokenMap[token])
-    if (user) {
-      user.password = req.body.password
-      // 重置密码后，令牌失效
-      delete changePasswordTokenMap[token]
-      res.end('密码重置成功')
-    } else {
-      // 造成user不存在的原因可能是操作时间过长，链接失效
-      res.end('此链接已失效')
+    var email = changePasswordTokenMap[token]
+    if (! email) {
+      res.end('链接已失效')
+      return
     }
+    await db.run('UPDATE users SET password=? WHERE email=?', req.body.password, changePasswordTokenMap[token])
+    // 重置密码后，令牌失效
+    delete changePasswordTokenMap[token]
+    res.end('密码重置成功')
   })
 
-app.listen(port, () => {
-  console.log('listening in port', port)
+dbPromise.then(dbObject => {
+  db = dbObject
+  app.listen(port, () => {
+    console.log('listening in port', port)
+  })
+
 })
