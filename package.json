@@ -4,6 +4,8 @@
   "description": "A simple voting system ",
   "dependencies": {
     "cookie-parser": "^1.4.4",
-    "express": "^4.17.1"
+    "express": "^4.17.1",
+    "sqlite": "^3.0.3",
+    "sqlite3": "^4.1.0"
   }
 }

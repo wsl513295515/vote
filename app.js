@@ -80,7 +80,21 @@ app.post('/login', (req, res, next) => {
     })
     res.redirect('/')
   } else {
-    res.end('用户名或密码错误')
+    res.end(`
+      <div>
+        <span>用户名或密码错误</sapn>
+        <span><span id="countDown">3</span>秒钟后回跳转至首页，如果没有跳转请<a href="/">点击跳转</a></span>
+      </div>
+      <script>
+        setTimeout(() => {
+          location.href = './'
+        },3000)
+        var cd = 3
+        setInterval(() => {
+          countDown.textContent = --cd
+        },1000)
+      </script>
+    `)
   }
 })
 
