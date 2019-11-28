@@ -1,0 +1,14 @@
+extends layout.pug
+
+block content
+  form(method="post" action="/login")
+    span 用户名:
+    input(type="text" name="name" required)
+    br
+    span 密码：
+    input(type="text" name="password" required)
+    br
+    button 登陆
+  form(method="get" action="/register")
+    button 注册
+  a(href="/forget") 忘记密码
