@@ -1,0 +1,19 @@
+extends layout.pug
+
+block content
+  h1= vote.title
+  h3= vote.desc
+
+  ul(data-voteid=vote.id)#option-list
+    each option in options
+      li(data-optionid=option.id)= option.content
+
+  script.
+    var optionList = document.querySelector('#option-list')
+    optionList.addEventListener('click', async e => {
+      var  optionid = e.target.dataset.optionid
+      var voteResult = await axios.post('/voteup', {
+        voteid: optionList.dataset.voteid,
+        optionid: optionid
+      }).data
+    })

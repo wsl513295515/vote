@@ -1,7 +1,7 @@
 const express = require('express')
 const cookieParser = require('cookie-parser')
 const sqlite = require('sqlite')
-
+const path = require('path')
 
 const port = 3008
 
@@ -14,15 +14,26 @@ const changePasswordTokenMap = {}
 
 const app = express()
 
+// 美化模板输出
+app.locals.pretty = true
+// 设置模板路径
+app.set('views', path.join(__dirname, './tpl'))
+// 模板类型（不写默认为pug）
+app.set('view engine', 'pug')
+
 // 创建cookie
 app.use(cookieParser('my secret'))
 
-// 解析post请求的请求体
+// 解析url编码请求的中间件
 app.use(express.urlencoded({
   extended: true
 }))
 
-app.use(express.static(__dirname + './static'))
+// 解析json请求体的中间件
+app.use(express.json())
+
+// 这里用path是因为不同命令行工具可能路径格式不一样
+app.use(express.static(path.join(__dirname , './static')))
 
 // 简陋的设置一下响应头的文本格式
 app.use((req, res, next) => {
@@ -31,30 +42,67 @@ app.use((req, res, next) => {
 })
 
 
-app.get('/create', (req, res, next) => {
-  res.end('创建投票')
+app.post('/create-vote', async (req, res, next) => {
+  // 创建投票页面，将数据导入数据库
+  var voteInfo = req.body
+  await db.run('INSERT INTO votes (title, desc, deadline, anonymous, singleSelection, userid) VALUES (?, ?, ?, ?, ?, ?)', voteInfo.title, voteInfo.desc, voteInfo.deadline, voteInfo.anonymous, voteInfo.singleSelection, req.signedCookies.userid) 
+  var vote = await db.get('SELECT * FROM votes ORDER BY id DESC LIMIT 1')
+  await Promise.all (voteInfo.options.map(option => {
+    return db.run('INSERT INTO options (content, voteid) VALUES (?,?)', option, vote.id)
+  }))
+  res.redirect('/vote/' + vote.id)
 })
 
-app.get('/vote/:id', (req, res, next) => {
+app.get('/vote/:id', async (req, res, next) => {
+  
+  // 这里同时创建两个promise再两个await的目的是让两个promise同时加载，提高运行效率
+  var votePromise = db.get('SELECT * FROM votes WHERE id=?', req.params.id)
+  var optionsPromise = db.all('SELECT * FROM options WHERE voteid=?', req.params.id)
+  var vote = await votePromise
+  var options = await optionsPromise
 
+  // 利用模板进行渲染
+  res.render('vote.pug', {
+    vote: vote,
+    options: options
+  })
+})
+
+app.post('/voteup', async (req, res, next) => {
+  
+  // 接收到投票数据，判断该用户是否已在该问题下投过票
+  // 如果投过了，就update数据，没投过就插入数据
+  var userid = req.signedCookies.userid
+  var body = req.body
+
+  var voteupInfo = await db.get('SELECT * FROM voteups WHERE userid=? AND voteid=?', userid, body.voteid)
+
+  if (voteupInfo) {
+    await db.run('UPDATE voteups SET optionid=? WHERE userid=?', body.optionid, userid)
+  } else {
+    await db.run('INSERT INTO voteups (userid, optionid, voteid) VALUES (?, ?, ?)', userid, req.body.optionid, body.voteid)
+  }
+  var voteups = await db.all('SELECT * FROM voteups WHERE voteid=?', req.body.voteid)
+  res.json(voteups)
 })
 
 // 首页如果有cookie的用户直接进入，
 // 如果没有则需要先登录或注册
-app.get('/', (req, res, next) => {
-    if (req.signedCookies.user) {
+app.get('/',async (req, res, next) => {
+    if (req.signedCookies.userid) {
+      var user = await db.get('SELECT * FROM users WHERE id=?',req.signedCookies.userid)
       res.end(`
         <div>
-          <h1>Hello ${req.signedCookies.user}</h1>
-          <a href="/create">创建投票</a>
+          <h1>Hello ${user.name}</h1>
+          <a href="/create.html">创建投票</a>
           <a href="/logout">退出登陆</a>
         </div>
       `)
     } else {
       res.end(`
         <form method="post" action="/login">
-          用户名：<input type="text" name="name" /></br>
-          密码：<input type="password" name="password" /></br>
+          用户名：<input type="text" name="name" required /></br>
+          密码：<input type="password" name="password" required /></br>
           <button>登陆</button>
         </form>
         <form method="get" action="/register">
@@ -73,7 +121,7 @@ app.post('/login', async (req, res, next) => {
     'SELECT * FROM users WHERE name = "'+ tryLogUser.name +'" AND password = "'+ tryLogUser.password +'" '
     )
   if (loginSec) {
-    res.cookie('user', tryLogUser.name, {
+    res.cookie('userid', loginSec.id, {
       signed: true
     })
     res.redirect('/')
@@ -98,7 +146,7 @@ app.post('/login', async (req, res, next) => {
 
 app.get('/logout', (req, res, next) => {
   // 退出登陆，清除cookie
-  res.clearCookie('user')
+  res.clearCookie('userid')
   res.redirect('/')
 })
 
@@ -106,9 +154,9 @@ app.route('/register')
   .get((req, res, next) => {
     res.end(`
       <form method="post" action="/register">
-        用户名：<input type="text" name="name" /></br>
-        邮箱：<input type="email" name="email" /><br>
-        密码：<input type="password" name="password" /></br>
+        用户名：<input type="text" name="name" required /></br>
+        邮箱：<input type="email" name="email" required /><br>
+        密码：<input type="password" name="password" required /></br>
         <button>注册</button>
       </form>
     `)
@@ -156,7 +204,7 @@ app.route('/forget')
       // 暂时用log代替
       console.log(link)
 
-      res.end('已向您的邮箱发送重置链接')
+      res.end('已向您的邮箱发送重置链接，请于20分钟内操作')
     } else {
       res.end('请输入正确邮箱')
     }
@@ -197,5 +245,4 @@ dbPromise.then(dbObject => {
   app.listen(port, () => {
     console.log('listening in port', port)
   })
-
 })
