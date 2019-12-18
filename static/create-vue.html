@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+</head>
+<body>
+  <div id="vote">
+    <h1>创建投票</h1>
+    标题：<input type="text" placeholder="标题（必填）" v-model="voteInfo.title"><br>
+    描述：<input type="text" placeholder="问题描述" v-model="voteInfo.desc"><br>
+    <div v-for="(option, idx) in voteInfo.options" :key="idx">
+      <input type="text" placeholder="选项" v-model="voteInfo.options[idx]">
+      <button @click="voteInfo.options.splice(idx, 1)">-</button>
+    </div>
+    <button @click="voteInfo.options.push('')">添加选项</button><br>
+    截止日期：<input type="datetime-local" v-model="voteInfo.deadline"><br>
+    <div>
+      匿名投票：
+      <label>是<input type="radio" v-model="voteInfo.anonymous" value="1"></label>
+      <label>否<input type="radio" v-model="voteInfo.anonymous" value="0"></label>
+    </div>
+    <div>
+      单选/多选：
+      <select v-model="voteInfo.singleSelection">
+        <option value="1" >单选</option>
+        <option value="0" >多选</option>
+      </select>
+    </div>
+    <button @click="submit">提交投票</button>
+  </div>
+  <script src="./assets/vue.js"></script>
+  <script src="./assets/axios.min.js"></script>
+  <script>
+    var vote = new Vue({
+      el: '#vote',
+      data: {
+        voteInfo: {
+          title: '',
+          desc: '',
+          options: ['', ''],
+          deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16),
+          anonymous: 0,
+          singleSelection: 1
+        }
+      },
+      methods: {
+        async submit() {
+          var request = await axios.post('./create-vote', this.voteInfo)
+          var data = request.data
+          location.href = '/vote-vue.html?id=' + data.id
+        }
+      }
+    })
+  </script>
+</body>
+</html>

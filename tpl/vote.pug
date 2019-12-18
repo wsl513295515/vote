@@ -9,33 +9,44 @@ block content
       li(data-optionid=option.id)= option.content
         span 
 
+  script(src="/socket.io/socket.io.js")
   script.
     var optionList = document.querySelector('#option-list')
     
-    async function main() {
-      var voteResult = (await axios.get(`/voteup/${optionList.dataset.voteid}/info`)).data
-      if (!voteResult) {
-        return
-      }
+    function updataState(voteResult) {
       var counted = _.countBy(voteResult, 'optionid')
       _.forEach(counted, (val, key) => {
         document.querySelector(`[data-optionid="${key}"]`).lastChild.textContent = '/' + val + '票'
       })
     }
+
+    async function main() {
+      var voteResult = (await axios.get(`/voteup/${optionList.dataset.voteid}/info`)).data
+      if (!voteResult) {
+        voteResult = []
+      }
+
+      var socket = io()
+
+      socket.emit('select room', location.pathname.split('/').pop())
+
+
+      socket.on('new vote', data => {
+        voteResult.push(data)
+        updataState(voteResult)
+      })
+
+      updataState(voteResult)
+    }
     main()
 
     optionList.addEventListener('click', async e => {
-      console.log(e.target)
       var  optionid = e.target.dataset.optionid
-      console.log(optionList.dataset.voteid, optionid)
       // 这里await后得到的是一个post返回的对象，后面加上.data可以得到返回的json数据
       var voteResult = (await axios.post('/voteup', {
         voteid: optionList.dataset.voteid,
         optionid: optionid
       })).data
 
-      var counted = _.countBy(voteResult, 'optionid')
-      _.forEach(counted, (val, key) => {
-        document.querySelector(`[data-optionid="${key}"]`).lastChild.textContent = '/' + val + '票'
-      })
+      updataState(voteResult)
     })

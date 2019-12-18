@@ -1,14 +1,18 @@
 extends layout
 
 block content
-  form(method="post" action="/register")
+  form(method="post" action="/register" enctype="multipart/form-data")
+    // 这里的 enctype="multipart/form-data"是为上传文件需要的编码方式，没有的话无法post二进制文件
     span 用户名:
     input(type="text" name="name" required)
     br
-    span 邮箱:
+    span 邮 箱:
     input(type="text" name="email" required)
     br
-    span 密码：
+    span 密 码：
     input(type="text" name="password" required)
+    br
+    span 头 像：
+    input(type="file" name="avatar")
     br
     button 注册

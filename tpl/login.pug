@@ -8,7 +8,17 @@ block content
     span 密码：
     input(type="text" name="password" required)
     br
+    span 验证码：
+    input(type="text" name="captcha" required)
+    br
+    img(id='captcha' src='/captcha')
+    br
     button 登陆
   form(method="get" action="/register")
     button 注册
   a(href="/forget") 忘记密码
+
+  script.
+    captcha.addEventListener('click', () => {
+      window.location.href = '/'
+    })

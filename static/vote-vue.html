@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+</head>
+<body>
+  <div id="app">
+    <div>
+      <h1>{{ vote.info.title }}</h1>
+      <h3>{{ vote.info.desc }}</h3>
+    </div>
+    <ul class="options">
+      <li @click="voteup(option.id)" v-for="option in vote.options">{{ option.content }} - {{ summary[option.id].length }}票
+        <div class="ratio" style="height: 2px; background-color: red;" :style="{width: ratioSummary[option.id] * 100 +'%'}"></div>
+      </li>
+    </ul>
+  </div>
+
+  <script src="/assets/vue.js"></script>
+  <script src="/assets/axios.min.js"></script>
+  <script src="/assets/lodash.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  
+  <script>
+    var app = new Vue({
+      el: '#app',
+      async mounted() {
+
+        var query = location.search.slice(1).split('&').reduce((obj, pair) => {
+          var [key, val] = pair.split('=')
+          obj[key] = val
+          return obj
+        },{})
+
+        var request = await axios.get('/voteinfo/' + query.id)
+        var data = request.data
+        this.vote = data
+        this.vote.voteups = _.uniqBy(this.vote.voteups, 'userid')
+
+        this.socket = io()
+        this.socket.emit('select room', query.id)
+        this.socket.on('new vote', data => {
+          this.vote.voteups.push(data)
+          this.vote.voteups = _.uniqBy(this.vote.voteups, 'userid')
+        })
+
+      },
+      data: {
+        vote: {
+          info:{},
+          options: [],
+          voteups: []
+        }
+      },
+      computed: {
+        summary() {
+          return _.groupBy(this.vote.voteups, 'optionid')
+        },
+        ratioSummary() {
+          
+          return _.mapValues(this.summary, (voteups, voteid) => {
+            return voteups.length / this.vote.voteups.length
+          })
+        }
+      },
+      methods: {
+        voteup(optionid) {
+          axios.post('/voteup', {
+            voteid: this.vote.info.id,
+            optionid: optionid
+          })
+        }
+      }
+    })
+  </script>
+</body>
+</html>
